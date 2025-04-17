@@ -8,7 +8,7 @@ const app = express();
 const path = require('path');
 app.use(
   cors({
-    origin: ['http://192.168.100.230:3000', 'http://localhost:3000', 'https://booking-hotel-woad.vercel.app/'],
+    origin: ['http://192.168.100.230:3000', 'http://localhost:3000', 'https://booking-hotel-woad.vercel.app'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     credentials: true,
   })
