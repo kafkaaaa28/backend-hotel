@@ -10,8 +10,10 @@ const bookingController = {
         return res.status(400).json({ message: 'Bukti pembayaran wajib diunggah' });
       }
 
-      const paymentProof = req.file;
-
+      const fileStr = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      const uploadResponse = await cloudinary.uploader.upload(fileStr, {
+        folder: 'bookings',
+      });
       const bookingData = {
         user_id: req.user.id,
         nama: req.body.nama,
@@ -20,7 +22,7 @@ const bookingController = {
         check_in: req.body.check_in,
         harga: req.body.harga,
         check_out: req.body.check_out,
-        payment_proof: `/uploads/${req.file.filename}`,
+        payment_proof: uploadResponse.secure_url,
       };
 
       const booking = await Booking.create(bookingData);
