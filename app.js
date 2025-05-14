@@ -6,13 +6,12 @@ const userRoutes = require('./routes/userRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const app = express();
 const path = require('path');
-app.use(
-  cors({
-    origin: ['http://192.168.100.230:3000', 'http://localhost:3000', 'https://booking-hotel-woad.vercel.app'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    credentials: true,
-  })
-);
+const corsOptions = {
+  origin: ['http://192.168.100.230:3000', 'http://localhost:3000', 'https://booking-hotel-woad.vercel.app'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  credentials: true,
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
 const fs = require('fs');
