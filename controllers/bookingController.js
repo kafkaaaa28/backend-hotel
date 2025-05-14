@@ -1,6 +1,7 @@
 const Booking = require('../Models/Booking.js');
 const path = require('path');
 const fs = require('fs');
+const cloudinary = require('../utils/cloudinary.js');
 
 const bookingController = {
   createBooking: async (req, res) => {
