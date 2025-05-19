@@ -1,33 +1,85 @@
 const Booking = require('../Models/Booking.js');
-const path = require('path');
-const fs = require('fs');
-const cloudinary = require('../utils/cloudinary.js');
-
+const db = require('../config/db');
+const midtrans = require('midtrans-client');
+let snap = new midtrans.Snap({
+  isProduction: false,
+  serverKey: process.env.SECRET,
+  ClientKey: process.env.CLIENT_KEY,
+});
 const bookingController = {
   createBooking: async (req, res) => {
     try {
-      // Handle file upload
-      if (!req.file) {
-        return res.status(400).json({ message: 'Bukti pembayaran wajib diunggah' });
+      if (!req.body) {
+        return res.status(400).json({ error: 'Request body is missing' });
       }
 
-      const fileStr = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
-      const uploadResponse = await cloudinary.uploader.upload(fileStr, {
-        folder: 'bookings',
-      });
+      const { name, nama, email, phone_number, check_in, check_out, harga } = req.body;
+      console.log('req.body:', req.body);
+
+      if (!name) {
+        return res.status(400).json({ error: 'Room name is required' });
+      }
+
       const bookingData = {
-        user_id: req.user.id,
-        nama: req.body.nama,
-        email: req.body.email,
-        phone_number: req.body.phone_number,
-        check_in: req.body.check_in,
-        harga: req.body.harga,
-        check_out: req.body.check_out,
-        payment_proof: uploadResponse.secure_url,
+        user_id: req.user?.id,
+        name,
+        nama,
+        email,
+        phone_number,
+        check_in,
+        check_out,
+        harga,
       };
 
-      const booking = await Booking.create(bookingData);
+      const booking = await Booking.createBooking(bookingData);
+
       res.status(201).json(booking);
+    } catch (err) {
+      console.error('❌ Error di createBooking:', err);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  createPayment: async (req, res) => {
+    try {
+      const { booking_id, name, nama, email, phone_number, harga } = req.body;
+      const order_id = `ORDER-${booking_id}-${Date.now()}`;
+      let paymentParams = {
+        transaction_details: {
+          order_id: order_id,
+          gross_amount: parseInt(harga),
+        },
+        item_details: [
+          {
+            name: name,
+            price: parseInt(harga),
+            quantity: 1,
+          },
+        ],
+        customer_details: {
+          first_name: nama,
+          email: email,
+          phone: phone_number,
+        },
+        callbacks: {
+          finish: 'http://localhost:3000/my-bookings',
+        },
+      };
+
+      const transaction = await snap.createTransaction(paymentParams);
+
+      await Booking.createPayments({
+        booking_id,
+        gross_amount: parseInt(harga),
+        transaction_status: 'pending',
+        transaction_id: transaction.token,
+        order_id: order_id,
+      });
+
+      res.status(201).json({
+        token: transaction.token,
+        redirect_url: transaction.redirect_url,
+      });
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: 'Server error' });
@@ -86,6 +138,79 @@ const bookingController = {
     } catch (err) {
       console.error('Error updating status:', err);
       res.status(500).json({ success: false, message: 'Gagal update status' });
+    }
+  },
+  midtransNotification: async (req, res) => {
+    try {
+      const { payment_type, transaction_time } = req.body;
+
+      const notification = await snap.transaction.notification(req.body);
+      const transactionStatus = notification.transaction_status;
+      const orderId = notification.order_id;
+      const bookingId = orderId.split('-')[1];
+      const paymentcheck = await Booking.getorder(orderId);
+      if (paymentcheck.length > 0) {
+        const updatePayment = await Booking.updatePayment(payment_type, transaction_time, transactionStatus, orderId);
+        const updateBooking = await Booking.updateStatus(bookingId, 'confirmed');
+        const updatePaymentandTime = await Booking.updatePaymentandtime(payment_type, transaction_time, bookingId);
+        res.status(200).json({
+          message: 'Payment status and booking status updated successfully',
+          success: true,
+          data: updatePayment,
+          updateBooking,
+          updatePaymentandTime,
+        });
+      } else {
+        if (transactionStatus === 'capture' || transactionStatus === 'settlement') {
+          try {
+            const updateBooking = await Booking.updateStatus(bookingId, 'confirmed');
+
+            await Booking.createPayments({
+              booking_id: parseInt(bookingId, 10),
+              order_id: orderId,
+              gross_amount: notification.gross_amount,
+              transaction_status: transactionStatus,
+              transaction_id: notification.transaction_id,
+              payment_type,
+              transaction_time,
+            });
+            await Booking.createBooking({
+              payment_type: payment_type,
+              transaction_time: transaction_time,
+            });
+            res.status(200).json({
+              message: 'Status updated to confirmed in both tables',
+              success: true,
+              data: updatePaymentstatus,
+              updateBooking,
+            });
+          } catch (err) {
+            console.error('❌ Gagal memproses notifikasi Midtrans:', err);
+            res.status(500).json({ message: 'Server error' });
+          }
+        } else {
+          res.status(200).json({ message: 'No action needed for this status' });
+        }
+      }
+    } catch (err) {
+      console.error('❌ Error in midtransNotification handler:', err);
+      return res.status(500).json({ message: 'Something broke!', error: err.message });
+    }
+  },
+  getUserPayments: async (req, res) => {
+    try {
+      const get = await Booking.getUserPayments(req.user.id);
+      res.json(get);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  },
+  getAllPayments: async (req, res) => {
+    try {
+      const get = await Booking.getAllPayments();
+      res.json(get);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
     }
   },
   deleteBooking: async (req, res) => {
