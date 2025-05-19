@@ -62,7 +62,7 @@ const bookingController = {
           phone: phone_number,
         },
         callbacks: {
-          finish: 'http://localhost:3000/my-bookings',
+          finish: 'https://booking-hotel-woad.vercel.app/my-bookings',
         },
       };
 
